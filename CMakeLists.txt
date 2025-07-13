@@ -42,10 +42,10 @@ pico_set_program_name(BTTest2 "BTTest2")
 pico_set_program_version(BTTest2 "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(BTTest2 1)
-pico_enable_stdio_usb(BTTest2 0)
+pico_enable_stdio_uart(BTTest2 0)
+pico_enable_stdio_usb(BTTest2 1)
 
-# pico_btstack_make_gatt_header(BTTest2 INTERFACE ${CMAKE_CURRENT_LIST_DIR}/hog_keyboard_demo.gatt)
+pico_btstack_make_gatt_header(BTTest2 INTERFACE ${CMAKE_CURRENT_LIST_DIR}/hog_keyboard_demo.gatt)
 
 # Add the standard library to the build
 target_link_libraries(BTTest2
@@ -54,6 +54,7 @@ target_link_libraries(BTTest2
 # Add the standard include files to the build
 target_include_directories(BTTest2 PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/generated/BTTest2_gatt_header
 )
 
 # Add Bluetooth libraries instead of Wi-Fi
