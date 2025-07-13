@@ -302,65 +302,164 @@ static void demo_timer_handler(btstack_timer_source_t *ts)
 {
     xbox_controller_report_t report = {0};
     
-    // Demo sequence: cycle through different inputs
-    switch (demo_step % 12) {
+    // Extended demo sequence: cycle through all 16 buttons and all axes
+    switch (demo_step % 36) {
+        // Individual buttons (0-15)
         case 0:
-            // Press A button
             report.buttons = XBOX_BUTTON_A;
-            printf("Demo: A Button\n");
+            printf("Demo: A Button (Button 1)\n");
             break;
         case 1:
-            // Release A, press B
             report.buttons = XBOX_BUTTON_B;
-            printf("Demo: B Button\n");
+            printf("Demo: B Button (Button 2)\n");
             break;
         case 2:
-            // Press X and Y together
-            report.buttons = XBOX_BUTTON_X | XBOX_BUTTON_Y;
-            printf("Demo: X+Y Buttons\n");
+            report.buttons = XBOX_BUTTON_X;
+            printf("Demo: X Button (Button 3)\n");
             break;
         case 3:
-            // Left stick up
-            report.left_y = -127;
-            printf("Demo: Left Stick Up\n");
+            report.buttons = XBOX_BUTTON_Y;
+            printf("Demo: Y Button (Button 4)\n");
             break;
         case 4:
-            // Left stick right
-            report.left_x = 127;
-            printf("Demo: Left Stick Right\n");
+            report.buttons = XBOX_BUTTON_LB;
+            printf("Demo: Left Bumper (Button 5)\n");
             break;
         case 5:
-            // Right stick down
-            report.right_y = 127;
-            printf("Demo: Right Stick Down\n");
+            report.buttons = XBOX_BUTTON_RB;
+            printf("Demo: Right Bumper (Button 6)\n");
             break;
         case 6:
-            // Right stick left
-            report.right_x = -127;
-            printf("Demo: Right Stick Left\n");
+            report.buttons = XBOX_BUTTON_BACK;
+            printf("Demo: Back Button (Button 7)\n");
             break;
         case 7:
-            // Left trigger
-            report.left_trigger = 255;
-            printf("Demo: Left Trigger\n");
+            report.buttons = XBOX_BUTTON_START;
+            printf("Demo: Start Button (Button 8)\n");
             break;
         case 8:
-            // Right trigger
-            report.right_trigger = 255;
-            printf("Demo: Right Trigger\n");
+            report.buttons = XBOX_BUTTON_LS;
+            printf("Demo: Left Stick Button (Button 9)\n");
             break;
         case 9:
-            // D-pad up
+            report.buttons = XBOX_BUTTON_RS;
+            printf("Demo: Right Stick Button (Button 10)\n");
+            break;
+        case 10:
+            report.buttons = XBOX_BUTTON_GUIDE;
+            printf("Demo: Guide Button (Button 11)\n");
+            break;
+        case 11:
+            report.buttons = 0x0800; // Button 12
+            printf("Demo: Button 12\n");
+            break;
+        case 12:
+            report.buttons = 0x1000; // Button 13
+            printf("Demo: Button 13\n");
+            break;
+        case 13:
+            report.buttons = 0x2000; // Button 14
+            printf("Demo: Button 14\n");
+            break;
+        case 14:
+            report.buttons = 0x4000; // Button 15
+            printf("Demo: Button 15\n");
+            break;
+        case 15:
+            report.buttons = 0x8000; // Button 16
+            printf("Demo: Button 16\n");
+            break;
+            
+        // Left stick axes
+        case 16:
+            report.left_x = -127;
+            printf("Demo: Left Stick X - Full Left\n");
+            break;
+        case 17:
+            report.left_x = 127;
+            printf("Demo: Left Stick X - Full Right\n");
+            break;
+        case 18:
+            report.left_y = -127;
+            printf("Demo: Left Stick Y - Full Up\n");
+            break;
+        case 19:
+            report.left_y = 127;
+            printf("Demo: Left Stick Y - Full Down\n");
+            break;
+            
+        // Right stick axes
+        case 20:
+            report.right_x = -127;
+            printf("Demo: Right Stick X - Full Left\n");
+            break;
+        case 21:
+            report.right_x = 127;
+            printf("Demo: Right Stick X - Full Right\n");
+            break;
+        case 22:
+            report.right_y = -127;
+            printf("Demo: Right Stick Y - Full Up\n");
+            break;
+        case 23:
+            report.right_y = 127;
+            printf("Demo: Right Stick Y - Full Down\n");
+            break;
+            
+        // Triggers
+        case 24:
+            report.left_trigger = 255;
+            printf("Demo: Left Trigger - Full Press\n");
+            break;
+        case 25:
+            report.right_trigger = 255;
+            printf("Demo: Right Trigger - Full Press\n");
+            break;
+            
+        // D-pad directions
+        case 26:
             report.dpad = DPAD_UP;
             printf("Demo: D-Pad Up\n");
             break;
-        case 10:
-            // D-pad right
+        case 27:
+            report.dpad = DPAD_UP_RIGHT;
+            printf("Demo: D-Pad Up-Right\n");
+            break;
+        case 28:
             report.dpad = DPAD_RIGHT;
             printf("Demo: D-Pad Right\n");
             break;
-        case 11:
+        case 29:
+            report.dpad = DPAD_DOWN_RIGHT;
+            printf("Demo: D-Pad Down-Right\n");
+            break;
+        case 30:
+            report.dpad = DPAD_DOWN;
+            printf("Demo: D-Pad Down\n");
+            break;
+        case 31:
+            report.dpad = DPAD_DOWN_LEFT;
+            printf("Demo: D-Pad Down-Left\n");
+            break;
+        case 32:
+            report.dpad = DPAD_LEFT;
+            printf("Demo: D-Pad Left\n");
+            break;
+        case 33:
+            report.dpad = DPAD_UP_LEFT;
+            printf("Demo: D-Pad Up-Left\n");
+            break;
+            
+        // Combination tests
+        case 34:
+            report.buttons = XBOX_BUTTON_A | XBOX_BUTTON_B | XBOX_BUTTON_X | XBOX_BUTTON_Y;
+            report.left_trigger = 127;
+            report.right_trigger = 127;
+            printf("Demo: Multiple Buttons + Half Triggers\n");
+            break;
+        case 35:
             // All neutral
+            report.dpad = DPAD_NEUTRAL;
             printf("Demo: All Neutral\n");
             break;
     }
