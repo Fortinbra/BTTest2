@@ -60,20 +60,15 @@ const uint8_t hid_descriptor_gamepad[] = {
     0xA1, 0x01,        // Collection (Application)
     0x85, 0x01,        //   Report ID (1)
     
-    // Buttons (12 buttons - standard gamepad layout)
+    // Buttons (16 buttons - extended gamepad layout)
     0x05, 0x09,        //   Usage Page (Button)
     0x19, 0x01,        //   Usage Minimum (0x01)
-    0x29, 0x0C,        //   Usage Maximum (0x0C) - 12 buttons
+    0x29, 0x10,        //   Usage Maximum (0x10) - 16 buttons
     0x15, 0x00,        //   Logical Minimum (0)
     0x25, 0x01,        //   Logical Maximum (1)
-    0x95, 0x0C,        //   Report Count (12)
+    0x95, 0x10,        //   Report Count (16)
     0x75, 0x01,        //   Report Size (1)
     0x81, 0x02,        //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
-    
-    // Padding for buttons (4 bits to align to byte boundary)
-    0x95, 0x01,        //   Report Count (1)
-    0x75, 0x04,        //   Report Size (4)
-    0x81, 0x03,        //   Input (Const,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
     
     // Left Stick X & Y
     0x05, 0x01,        //   Usage Page (Generic Desktop Ctrls)
@@ -125,7 +120,7 @@ const uint8_t hid_descriptor_gamepad[] = {
 };
 
 //
-// Generic Gamepad Button Definitions
+// Generic Gamepad Button Definitions (16 buttons)
 #define GAMEPAD_BUTTON_1       0x0001  // Face Button 1 (A/Cross)
 #define GAMEPAD_BUTTON_2       0x0002  // Face Button 2 (B/Circle)  
 #define GAMEPAD_BUTTON_3       0x0004  // Face Button 3 (X/Square)
@@ -137,7 +132,11 @@ const uint8_t hid_descriptor_gamepad[] = {
 #define GAMEPAD_BUTTON_L3      0x0100  // Left Stick Click
 #define GAMEPAD_BUTTON_R3      0x0200  // Right Stick Click
 #define GAMEPAD_BUTTON_HOME    0x0400  // Home/Guide Button
-#define GAMEPAD_BUTTON_EXTRA   0x0800  // Extra Button (12th button)
+#define GAMEPAD_BUTTON_EXTRA1  0x0800  // Extra Button 1
+#define GAMEPAD_BUTTON_EXTRA2  0x1000  // Extra Button 2
+#define GAMEPAD_BUTTON_EXTRA3  0x2000  // Extra Button 3
+#define GAMEPAD_BUTTON_EXTRA4  0x4000  // Extra Button 4
+#define GAMEPAD_BUTTON_EXTRA5  0x8000  // Extra Button 5
 
 // D-Pad directions
 #define DPAD_UP           0
@@ -152,7 +151,7 @@ const uint8_t hid_descriptor_gamepad[] = {
 
 // Generic Gamepad Report Structure (Windows-compatible)
 typedef struct {
-    uint16_t buttons;     // Button states (12 buttons used)
+    uint16_t buttons;     // Button states (16 buttons used)
     int16_t left_x;       // Left stick X (-32768 to 32767)
     int16_t left_y;       // Left stick Y (-32768 to 32767) 
     int16_t right_x;      // Right stick X (-32768 to 32767)
@@ -240,9 +239,9 @@ static void send_gamepad_report(gamepad_report_t *report)
 {
     uint8_t hid_report[13];
     
-    // Buttons: 12 bits + 4 bits padding = 2 bytes
+    // Buttons: 16 bits = 2 bytes (exactly fits, no padding needed)
     hid_report[0] = report->buttons & 0xFF;         // Low 8 bits of buttons
-    hid_report[1] = (report->buttons >> 8) & 0x0F; // High 4 bits of buttons + 4 bits padding
+    hid_report[1] = (report->buttons >> 8) & 0xFF; // High 8 bits of buttons
     
     // Left stick: 2 × 16-bit values = 4 bytes
     hid_report[2] = report->left_x & 0xFF;
@@ -267,6 +266,12 @@ static void send_gamepad_report(gamepad_report_t *report)
     if (report->buttons != 0) {
         printf("Sending buttons: 0x%04X (bytes: 0x%02X 0x%02X)\n", 
                report->buttons, hid_report[0], hid_report[1]);
+    }
+    
+    // Debug output for analog sticks (show non-zero values)
+    if (report->left_x != 0 || report->left_y != 0 || report->right_x != 0 || report->right_y != 0) {
+        printf("Analog sticks - Left: (%d, %d), Right: (%d, %d)\n", 
+               report->left_x, report->left_y, report->right_x, report->right_y);
     }
     
     if (protocol_mode) {
@@ -299,11 +304,14 @@ static void demo_timer_handler(btstack_timer_source_t *ts)
 {
     gamepad_report_t report = {0};
     
-    printf("Demo step %d: ", demo_step % 32);
+    // Initialize to neutral state
+    report.dpad = DPAD_NEUTRAL;  // Important: 0 = DPAD_UP, we want 8 = DPAD_NEUTRAL
+    
+    printf("Demo step %d: ", demo_step % 40);
     
     // Demo sequence: cycle through buttons, axes, triggers, and d-pad
-    switch (demo_step % 32) {
-        // Test all 12 buttons individually
+    switch (demo_step % 40) {
+        // Test all 16 buttons individually
         case 0:  report.buttons = GAMEPAD_BUTTON_1; printf("Button 1 (A/Cross)\n"); break;
         case 1:  report.buttons = GAMEPAD_BUTTON_2; printf("Button 2 (B/Circle)\n"); break;
         case 2:  report.buttons = GAMEPAD_BUTTON_3; printf("Button 3 (X/Square)\n"); break;
@@ -315,39 +323,59 @@ static void demo_timer_handler(btstack_timer_source_t *ts)
         case 8:  report.buttons = GAMEPAD_BUTTON_L3; printf("Left Stick Click (L3)\n"); break;
         case 9:  report.buttons = GAMEPAD_BUTTON_R3; printf("Right Stick Click (R3)\n"); break;
         case 10: report.buttons = GAMEPAD_BUTTON_HOME; printf("Home/Guide\n"); break;
-        case 11: report.buttons = GAMEPAD_BUTTON_EXTRA; printf("Extra Button\n"); break;
+        case 11: report.buttons = GAMEPAD_BUTTON_EXTRA1; printf("Extra Button 1\n"); break;
+        case 12: report.buttons = GAMEPAD_BUTTON_EXTRA2; printf("Extra Button 2\n"); break;
+        case 13: report.buttons = GAMEPAD_BUTTON_EXTRA3; printf("Extra Button 3\n"); break;
+        case 14: report.buttons = GAMEPAD_BUTTON_EXTRA4; printf("Extra Button 4\n"); break;
+        case 15: report.buttons = GAMEPAD_BUTTON_EXTRA5; printf("Extra Button 5\n"); break;
             
         // Test analog sticks
-        case 12: report.left_x = -32767; printf("Demo: Left Stick X - Full Left\n"); break;
-        case 13: report.left_x = 32767; printf("Demo: Left Stick X - Full Right\n"); break;
-        case 14: report.left_y = -32767; printf("Demo: Left Stick Y - Full Up\n"); break;
-        case 15: report.left_y = 32767; printf("Demo: Left Stick Y - Full Down\n"); break;
-        case 16: report.right_x = -32767; printf("Demo: Right Stick X - Full Left\n"); break;
-        case 17: report.right_x = 32767; printf("Demo: Right Stick X - Full Right\n"); break;
-        case 18: report.right_y = -32767; printf("Demo: Right Stick Y - Full Up\n"); break;
-        case 19: report.right_y = 32767; printf("Demo: Right Stick Y - Full Down\n"); break;
+        case 16: report.left_x = -32767; printf("Demo: Left Stick X - Full Left\n"); break;
+        case 17: report.left_x = 32767; printf("Demo: Left Stick X - Full Right\n"); break;
+        case 18: report.left_y = -32767; printf("Demo: Left Stick Y - Full Up\n"); break;
+        case 19: report.left_y = 32767; printf("Demo: Left Stick Y - Full Down\n"); break;
+        case 20: report.right_x = -32767; printf("Demo: Right Stick X - Full Left\n"); break;
+        case 21: report.right_x = 32767; printf("Demo: Right Stick X - Full Right\n"); break;
+        case 22: report.right_y = -32767; printf("Demo: Right Stick Y - Full Up\n"); break;
+        case 23: report.right_y = 32767; printf("Demo: Right Stick Y - Full Down\n"); break;
             
         // Test triggers
-        case 20: report.left_trigger = 255; printf("Demo: Left Trigger - Full Press\n"); break;
-        case 21: report.right_trigger = 255; printf("Demo: Right Trigger - Full Press\n"); break;
+        case 24: report.left_trigger = 255; printf("Demo: Left Trigger - Full Press\n"); break;
+        case 25: report.right_trigger = 255; printf("Demo: Right Trigger - Full Press\n"); break;
             
         // Test D-pad
-        case 22: report.dpad = DPAD_UP; printf("Demo: D-Pad Up\n"); break;
-        case 23: report.dpad = DPAD_UP_RIGHT; printf("Demo: D-Pad Up-Right\n"); break;
-        case 24: report.dpad = DPAD_RIGHT; printf("Demo: D-Pad Right\n"); break;
-        case 25: report.dpad = DPAD_DOWN_RIGHT; printf("Demo: D-Pad Down-Right\n"); break;
-        case 26: report.dpad = DPAD_DOWN; printf("Demo: D-Pad Down\n"); break;
-        case 27: report.dpad = DPAD_DOWN_LEFT; printf("Demo: D-Pad Down-Left\n"); break;
-        case 28: report.dpad = DPAD_LEFT; printf("Demo: D-Pad Left\n"); break;
-        case 29: report.dpad = DPAD_UP_LEFT; printf("Demo: D-Pad Up-Left\n"); break;
+        case 26: report.dpad = DPAD_UP; printf("Demo: D-Pad Up\n"); break;
+        case 27: report.dpad = DPAD_UP_RIGHT; printf("Demo: D-Pad Up-Right\n"); break;
+        case 28: report.dpad = DPAD_RIGHT; printf("Demo: D-Pad Right\n"); break;
+        case 29: report.dpad = DPAD_DOWN_RIGHT; printf("Demo: D-Pad Down-Right\n"); break;
+        case 30: report.dpad = DPAD_DOWN; printf("Demo: D-Pad Down\n"); break;
+        case 31: report.dpad = DPAD_DOWN_LEFT; printf("Demo: D-Pad Down-Left\n"); break;
+        case 32: report.dpad = DPAD_LEFT; printf("Demo: D-Pad Left\n"); break;
+        case 33: report.dpad = DPAD_UP_LEFT; printf("Demo: D-Pad Up-Left\n"); break;
             
         // Test combinations
-        case 30:
+        case 34:
             report.buttons = GAMEPAD_BUTTON_1 | GAMEPAD_BUTTON_2 | GAMEPAD_BUTTON_3 | GAMEPAD_BUTTON_4;
             report.left_trigger = 127; report.right_trigger = 127;
-            printf("Demo: Multiple Buttons + Half Triggers\n");
+            printf("Demo: Face Buttons + Half Triggers\n");
             break;
-        case 31: report.dpad = DPAD_NEUTRAL; printf("Demo: All Neutral\n"); break;
+        case 35:
+            report.buttons = GAMEPAD_BUTTON_L1 | GAMEPAD_BUTTON_R1 | GAMEPAD_BUTTON_L3 | GAMEPAD_BUTTON_R3;
+            printf("Demo: Shoulder + Stick Buttons\n");
+            break;
+        case 36:
+            report.buttons = GAMEPAD_BUTTON_EXTRA1 | GAMEPAD_BUTTON_EXTRA2 | GAMEPAD_BUTTON_EXTRA3;
+            printf("Demo: Extra Buttons 1-3\n");
+            break;
+        case 37:
+            report.buttons = GAMEPAD_BUTTON_EXTRA4 | GAMEPAD_BUTTON_EXTRA5 | GAMEPAD_BUTTON_HOME;
+            printf("Demo: Extra Buttons 4-5 + Home\n");
+            break;
+        case 38:
+            report.buttons = 0xFFFF; // All 16 buttons
+            printf("Demo: All 16 Buttons Pressed\n");
+            break;
+        case 39: report.dpad = DPAD_NEUTRAL; printf("Demo: All Neutral\n"); break;
     }
     
     demo_step++;
