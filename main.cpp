@@ -36,7 +36,7 @@
  */
 
 // *****************************************************************************
-/* EXAMPLE_START(hog_gamepad_demo): HID Gamepad LE
+/* EXAMPLE_START(hog_gamepad_demo): HID Generic Gamepad LE
  */
 // *****************************************************************************
 
@@ -46,9 +46,8 @@
 #include <string.h>
 #include <inttypes.h>
 
-#include "hog_keyboard_demo.h"
-
 #include "btstack.h"
+#include "hog_keyboard_demo.h"
 
 #include "ble/gatt-service/battery_service_server.h"
 #include "ble/gatt-service/device_information_service_server.h"
@@ -64,39 +63,44 @@
 #include "pico/btstack_hci_transport_cyw43.h"
 #include "pico/btstack_run_loop_async_context.h"
 
-// from USB HID Specification for Xbox Controller
+// Windows-compatible HID Gamepad Descriptor
 const uint8_t hid_descriptor_gamepad[] = {
     0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
     0x09, 0x05,        // Usage (Game Pad)
     0xA1, 0x01,        // Collection (Application)
     0x85, 0x01,        //   Report ID (1)
     
-    // Buttons (16 buttons)
+    // Buttons (12 buttons - standard gamepad layout)
     0x05, 0x09,        //   Usage Page (Button)
     0x19, 0x01,        //   Usage Minimum (0x01)
-    0x29, 0x10,        //   Usage Maximum (0x10)
+    0x29, 0x0C,        //   Usage Maximum (0x0C) - 12 buttons
     0x15, 0x00,        //   Logical Minimum (0)
     0x25, 0x01,        //   Logical Maximum (1)
-    0x95, 0x10,        //   Report Count (16)
+    0x95, 0x0C,        //   Report Count (12)
     0x75, 0x01,        //   Report Size (1)
     0x81, 0x02,        //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+    
+    // Padding for buttons (4 bits to align to byte boundary)
+    0x95, 0x01,        //   Report Count (1)
+    0x75, 0x04,        //   Report Size (4)
+    0x81, 0x03,        //   Input (Const,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
     
     // Left Stick X & Y
     0x05, 0x01,        //   Usage Page (Generic Desktop Ctrls)
     0x09, 0x30,        //   Usage (X)
     0x09, 0x31,        //   Usage (Y)
-    0x15, 0x81,        //   Logical Minimum (-127)
-    0x25, 0x7F,        //   Logical Maximum (127)
-    0x75, 0x08,        //   Report Size (8)
+    0x16, 0x00, 0x80,  //   Logical Minimum (-32768)
+    0x26, 0xFF, 0x7F,  //   Logical Maximum (32767)
+    0x75, 0x10,        //   Report Size (16)
     0x95, 0x02,        //   Report Count (2)
     0x81, 0x02,        //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
     
     // Right Stick X & Y
     0x09, 0x32,        //   Usage (Z)
     0x09, 0x35,        //   Usage (Rz)
-    0x15, 0x81,        //   Logical Minimum (-127)
-    0x25, 0x7F,        //   Logical Maximum (127)
-    0x75, 0x08,        //   Report Size (8)
+    0x16, 0x00, 0x80,  //   Logical Minimum (-32768)
+    0x26, 0xFF, 0x7F,  //   Logical Maximum (32767)
+    0x75, 0x10,        //   Report Size (16)
     0x95, 0x02,        //   Report Count (2)
     0x81, 0x02,        //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
     
@@ -105,7 +109,7 @@ const uint8_t hid_descriptor_gamepad[] = {
     0x09, 0xC5,        //   Usage (Brake)
     0x09, 0xC4,        //   Usage (Accelerator)
     0x15, 0x00,        //   Logical Minimum (0)
-    0x25, 0xFF,        //   Logical Maximum (255)
+    0x26, 0xFF, 0x00,  //   Logical Maximum (255)
     0x75, 0x08,        //   Report Size (8)
     0x95, 0x02,        //   Report Count (2)
     0x81, 0x02,        //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
@@ -115,33 +119,35 @@ const uint8_t hid_descriptor_gamepad[] = {
     0x09, 0x39,        //   Usage (Hat switch)
     0x15, 0x00,        //   Logical Minimum (0)
     0x25, 0x07,        //   Logical Maximum (7)
+    0x35, 0x00,        //   Physical Minimum (0)
     0x46, 0x3B, 0x01,  //   Physical Maximum (315)
-    0x66, 0x14, 0x00,  //   Unit (System: English Rotation, Length: Centimeter)
+    0x65, 0x14,        //   Unit (System: English Rotation, Length: Degree)
     0x75, 0x04,        //   Report Size (4)
     0x95, 0x01,        //   Report Count (1)
     0x81, 0x02,        //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
     
-    // Padding
-    0x75, 0x04,        //   Report Size (4)
+    // Padding for hat switch
     0x95, 0x01,        //   Report Count (1)
+    0x75, 0x04,        //   Report Size (4)
     0x81, 0x03,        //   Input (Const,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
     
     0xC0,              // End Collection
 };
 
 //
-// Xbox Controller Button Definitions
-#define XBOX_BUTTON_A      0x0001
-#define XBOX_BUTTON_B      0x0002
-#define XBOX_BUTTON_X      0x0004
-#define XBOX_BUTTON_Y      0x0008
-#define XBOX_BUTTON_LB     0x0010
-#define XBOX_BUTTON_RB     0x0020
-#define XBOX_BUTTON_BACK   0x0040
-#define XBOX_BUTTON_START  0x0080
-#define XBOX_BUTTON_LS     0x0100
-#define XBOX_BUTTON_RS     0x0200
-#define XBOX_BUTTON_GUIDE  0x0400
+// Generic Gamepad Button Definitions
+#define GAMEPAD_BUTTON_1       0x0001  // Face Button 1 (A/Cross)
+#define GAMEPAD_BUTTON_2       0x0002  // Face Button 2 (B/Circle)  
+#define GAMEPAD_BUTTON_3       0x0004  // Face Button 3 (X/Square)
+#define GAMEPAD_BUTTON_4       0x0008  // Face Button 4 (Y/Triangle)
+#define GAMEPAD_BUTTON_L1      0x0010  // Left Shoulder Button
+#define GAMEPAD_BUTTON_R1      0x0020  // Right Shoulder Button
+#define GAMEPAD_BUTTON_SELECT  0x0040  // Select/Back Button
+#define GAMEPAD_BUTTON_START   0x0080  // Start/Menu Button
+#define GAMEPAD_BUTTON_L3      0x0100  // Left Stick Click
+#define GAMEPAD_BUTTON_R3      0x0200  // Right Stick Click
+#define GAMEPAD_BUTTON_HOME    0x0400  // Home/Guide Button
+#define GAMEPAD_BUTTON_EXTRA   0x0800  // Extra Button (12th button)
 
 // D-Pad directions
 #define DPAD_UP           0
@@ -154,17 +160,17 @@ const uint8_t hid_descriptor_gamepad[] = {
 #define DPAD_UP_LEFT      7
 #define DPAD_NEUTRAL      8
 
-// Xbox Controller Report Structure
+// Generic Gamepad Report Structure (Windows-compatible)
 typedef struct {
-    uint16_t buttons;     // Button states (16 buttons)
-    int8_t left_x;        // Left stick X (-127 to 127)
-    int8_t left_y;        // Left stick Y (-127 to 127) 
-    int8_t right_x;       // Right stick X (-127 to 127)
-    int8_t right_y;       // Right stick Y (-127 to 127)
+    uint16_t buttons;     // Button states (12 buttons, only lower 12 bits used)
+    int16_t left_x;       // Left stick X (-32768 to 32767)
+    int16_t left_y;       // Left stick Y (-32768 to 32767) 
+    int16_t right_x;      // Right stick X (-32768 to 32767)
+    int16_t right_y;      // Right stick Y (-32768 to 32767)
     uint8_t left_trigger; // Left trigger (0-255)
     uint8_t right_trigger;// Right trigger (0-255)
     uint8_t dpad;         // D-pad direction (0-7, 8=neutral)
-} xbox_controller_report_t;
+} gamepad_report_t;
 
 // static btstack_timer_source_t heartbeat;
 static btstack_packet_callback_registration_t hci_event_callback_registration;
@@ -180,7 +186,7 @@ const uint8_t adv_data[] = {
     0x02,
     BLUETOOTH_DATA_TYPE_FLAGS,
     0x06,
-    // Name
+    // Name - "BT Gamepad" (shorter name for advertising space)
     0x0b,
     BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
     'B',
@@ -228,10 +234,10 @@ static void le_gamepad_setup(void)
     // setup HID Device service
     hids_device_init(0, hid_descriptor_gamepad, sizeof(hid_descriptor_gamepad));
 
-    // setup advertisements
-    uint16_t adv_int_min = 0x0030;
-    uint16_t adv_int_max = 0x0030;
-    uint8_t adv_type = 0;
+    // setup advertisements - more aggressive for better discoverability
+    uint16_t adv_int_min = 0x0020;  // Faster advertising interval (20ms)
+    uint16_t adv_int_max = 0x0040;  // Max 40ms
+    uint8_t adv_type = 0;           // ADV_IND - connectable undirected advertising
     bd_addr_t null_addr;
     memset(null_addr, 0, 6);
     gap_advertisements_set_params(adv_int_min, adv_int_max, adv_type, 0, null_addr, 0x07, 0x00);
@@ -251,18 +257,22 @@ static void le_gamepad_setup(void)
 }
 
 // Gamepad Report sending
-static void send_gamepad_report(xbox_controller_report_t *report)
+static void send_gamepad_report(gamepad_report_t *report)
 {
-    uint8_t hid_report[9];
-    hid_report[0] = report->buttons & 0xFF;        // Low byte of buttons
-    hid_report[1] = (report->buttons >> 8) & 0xFF; // High byte of buttons
-    hid_report[2] = report->left_x;                // Left stick X
-    hid_report[3] = report->left_y;                // Left stick Y
-    hid_report[4] = report->right_x;               // Right stick X
-    hid_report[5] = report->right_y;               // Right stick Y
-    hid_report[6] = report->left_trigger;          // Left trigger
-    hid_report[7] = report->right_trigger;         // Right trigger
-    hid_report[8] = report->dpad;                  // D-pad
+    uint8_t hid_report[13];  // Updated to 13 bytes for 16-bit stick values
+    hid_report[0] = report->buttons & 0xFF;        // Low byte of buttons (12 bits used)
+    hid_report[1] = (report->buttons >> 8) & 0x0F; // High nibble padding
+    hid_report[2] = report->left_x & 0xFF;         // Left stick X low byte
+    hid_report[3] = (report->left_x >> 8) & 0xFF;  // Left stick X high byte
+    hid_report[4] = report->left_y & 0xFF;         // Left stick Y low byte
+    hid_report[5] = (report->left_y >> 8) & 0xFF;  // Left stick Y high byte
+    hid_report[6] = report->right_x & 0xFF;        // Right stick X low byte
+    hid_report[7] = (report->right_x >> 8) & 0xFF; // Right stick X high byte
+    hid_report[8] = report->right_y & 0xFF;        // Right stick Y low byte
+    hid_report[9] = (report->right_y >> 8) & 0xFF; // Right stick Y high byte
+    hid_report[10] = report->left_trigger;         // Left trigger
+    hid_report[11] = report->right_trigger;        // Right trigger
+    hid_report[12] = report->dpad;                 // D-pad
     
     switch (protocol_mode)
     {
@@ -285,11 +295,11 @@ static void send_gamepad_report(xbox_controller_report_t *report)
 
 static int demo_step;
 static btstack_timer_source_t demo_timer;
-static xbox_controller_report_t current_report;
+static gamepad_report_t current_report;
 
-static void send_gamepad_input(xbox_controller_report_t *report)
+static void send_gamepad_input(gamepad_report_t *report)
 {
-    memcpy(&current_report, report, sizeof(xbox_controller_report_t));
+    memcpy(&current_report, report, sizeof(gamepad_report_t));
     hids_device_request_can_send_now_event(con_handle);
 }
 
@@ -300,164 +310,148 @@ static void gamepad_can_send_now(void)
 
 static void demo_timer_handler(btstack_timer_source_t *ts)
 {
-    xbox_controller_report_t report = {0};
+    gamepad_report_t report = {0};
     
-    // Extended demo sequence: cycle through all 16 buttons and all axes
-    switch (demo_step % 36) {
-        // Individual buttons (0-15)
+    // Extended demo sequence: cycle through all 12 buttons and all axes
+    switch (demo_step % 32) {  // Updated to 32 cases
+        // Individual buttons (0-11)
         case 0:
-            report.buttons = XBOX_BUTTON_A;
-            printf("Demo: A Button (Button 1)\n");
+            report.buttons = GAMEPAD_BUTTON_1;
+            printf("Demo: Button 1 (Face Button A/Cross)\n");
             break;
         case 1:
-            report.buttons = XBOX_BUTTON_B;
-            printf("Demo: B Button (Button 2)\n");
+            report.buttons = GAMEPAD_BUTTON_2;
+            printf("Demo: Button 2 (Face Button B/Circle)\n");
             break;
         case 2:
-            report.buttons = XBOX_BUTTON_X;
-            printf("Demo: X Button (Button 3)\n");
+            report.buttons = GAMEPAD_BUTTON_3;
+            printf("Demo: Button 3 (Face Button X/Square)\n");
             break;
         case 3:
-            report.buttons = XBOX_BUTTON_Y;
-            printf("Demo: Y Button (Button 4)\n");
+            report.buttons = GAMEPAD_BUTTON_4;
+            printf("Demo: Button 4 (Face Button Y/Triangle)\n");
             break;
         case 4:
-            report.buttons = XBOX_BUTTON_LB;
-            printf("Demo: Left Bumper (Button 5)\n");
+            report.buttons = GAMEPAD_BUTTON_L1;
+            printf("Demo: Left Shoulder Button (L1)\n");
             break;
         case 5:
-            report.buttons = XBOX_BUTTON_RB;
-            printf("Demo: Right Bumper (Button 6)\n");
+            report.buttons = GAMEPAD_BUTTON_R1;
+            printf("Demo: Right Shoulder Button (R1)\n");
             break;
         case 6:
-            report.buttons = XBOX_BUTTON_BACK;
-            printf("Demo: Back Button (Button 7)\n");
+            report.buttons = GAMEPAD_BUTTON_SELECT;
+            printf("Demo: Select/Back Button\n");
             break;
         case 7:
-            report.buttons = XBOX_BUTTON_START;
-            printf("Demo: Start Button (Button 8)\n");
+            report.buttons = GAMEPAD_BUTTON_START;
+            printf("Demo: Start/Menu Button\n");
             break;
         case 8:
-            report.buttons = XBOX_BUTTON_LS;
-            printf("Demo: Left Stick Button (Button 9)\n");
+            report.buttons = GAMEPAD_BUTTON_L3;
+            printf("Demo: Left Stick Click (L3)\n");
             break;
         case 9:
-            report.buttons = XBOX_BUTTON_RS;
-            printf("Demo: Right Stick Button (Button 10)\n");
+            report.buttons = GAMEPAD_BUTTON_R3;
+            printf("Demo: Right Stick Click (R3)\n");
             break;
         case 10:
-            report.buttons = XBOX_BUTTON_GUIDE;
-            printf("Demo: Guide Button (Button 11)\n");
+            report.buttons = GAMEPAD_BUTTON_HOME;
+            printf("Demo: Home/Guide Button\n");
             break;
         case 11:
-            report.buttons = 0x0800; // Button 12
-            printf("Demo: Button 12\n");
-            break;
-        case 12:
-            report.buttons = 0x1000; // Button 13
-            printf("Demo: Button 13\n");
-            break;
-        case 13:
-            report.buttons = 0x2000; // Button 14
-            printf("Demo: Button 14\n");
-            break;
-        case 14:
-            report.buttons = 0x4000; // Button 15
-            printf("Demo: Button 15\n");
-            break;
-        case 15:
-            report.buttons = 0x8000; // Button 16
-            printf("Demo: Button 16\n");
+            report.buttons = GAMEPAD_BUTTON_EXTRA;
+            printf("Demo: Extra Button (12th button)\n");
             break;
             
         // Left stick axes
-        case 16:
-            report.left_x = -127;
+        case 12:
+            report.left_x = -32767;
             printf("Demo: Left Stick X - Full Left\n");
             break;
-        case 17:
-            report.left_x = 127;
+        case 13:
+            report.left_x = 32767;
             printf("Demo: Left Stick X - Full Right\n");
             break;
-        case 18:
-            report.left_y = -127;
+        case 14:
+            report.left_y = -32767;
             printf("Demo: Left Stick Y - Full Up\n");
             break;
-        case 19:
-            report.left_y = 127;
+        case 15:
+            report.left_y = 32767;
             printf("Demo: Left Stick Y - Full Down\n");
             break;
             
         // Right stick axes
-        case 20:
-            report.right_x = -127;
+        case 16:
+            report.right_x = -32767;
             printf("Demo: Right Stick X - Full Left\n");
             break;
-        case 21:
-            report.right_x = 127;
+        case 17:
+            report.right_x = 32767;
             printf("Demo: Right Stick X - Full Right\n");
             break;
-        case 22:
-            report.right_y = -127;
+        case 18:
+            report.right_y = -32767;
             printf("Demo: Right Stick Y - Full Up\n");
             break;
-        case 23:
-            report.right_y = 127;
+        case 19:
+            report.right_y = 32767;
             printf("Demo: Right Stick Y - Full Down\n");
             break;
             
         // Triggers
-        case 24:
+        case 20:
             report.left_trigger = 255;
             printf("Demo: Left Trigger - Full Press\n");
             break;
-        case 25:
+        case 21:
             report.right_trigger = 255;
             printf("Demo: Right Trigger - Full Press\n");
             break;
             
         // D-pad directions
-        case 26:
+        case 22:
             report.dpad = DPAD_UP;
             printf("Demo: D-Pad Up\n");
             break;
-        case 27:
+        case 23:
             report.dpad = DPAD_UP_RIGHT;
             printf("Demo: D-Pad Up-Right\n");
             break;
-        case 28:
+        case 24:
             report.dpad = DPAD_RIGHT;
             printf("Demo: D-Pad Right\n");
             break;
-        case 29:
+        case 25:
             report.dpad = DPAD_DOWN_RIGHT;
             printf("Demo: D-Pad Down-Right\n");
             break;
-        case 30:
+        case 26:
             report.dpad = DPAD_DOWN;
             printf("Demo: D-Pad Down\n");
             break;
-        case 31:
+        case 27:
             report.dpad = DPAD_DOWN_LEFT;
             printf("Demo: D-Pad Down-Left\n");
             break;
-        case 32:
+        case 28:
             report.dpad = DPAD_LEFT;
             printf("Demo: D-Pad Left\n");
             break;
-        case 33:
+        case 29:
             report.dpad = DPAD_UP_LEFT;
             printf("Demo: D-Pad Up-Left\n");
             break;
             
-        // Combination tests
-        case 34:
-            report.buttons = XBOX_BUTTON_A | XBOX_BUTTON_B | XBOX_BUTTON_X | XBOX_BUTTON_Y;
+        // Combination test
+        case 30:
+            report.buttons = GAMEPAD_BUTTON_1 | GAMEPAD_BUTTON_2 | GAMEPAD_BUTTON_3 | GAMEPAD_BUTTON_4;
             report.left_trigger = 127;
             report.right_trigger = 127;
             printf("Demo: Multiple Buttons + Half Triggers\n");
             break;
-        case 35:
+        case 31:
             // All neutral
             report.dpad = DPAD_NEUTRAL;
             printf("Demo: All Neutral\n");
@@ -474,7 +468,7 @@ static void demo_timer_handler(btstack_timer_source_t *ts)
 
 static void hid_embedded_start_demo(void)
 {
-    printf("Start gamepad demo..\n");
+    printf("Start generic gamepad demo..\n");
 
     demo_step = 0;
     memset(&current_report, 0, sizeof(current_report));
